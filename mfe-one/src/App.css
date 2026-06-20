@@ -1,0 +1,14 @@
+.mfe-one {
+    border: 2px dashed #2563eb;
+    border-radius: 8px;
+    padding: 1.25rem;
+}
+
+.mfe-one button {
+    padding: 0.5rem 1rem;
+    border-radius: 6px;
+    border: 1px solid #2563eb;
+    background: #2563eb;
+    color: white;
+    cursor: pointer;
+}

@@ -1,0 +1,6 @@
+{
+    "imports": {
+        "@poc/mfe-one": "http://localhost:4101/src/spa.tsx",
+        "@poc/mfe-two": "http://localhost:4102/src/spa.tsx"
+    }
+}
