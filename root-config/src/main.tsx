@@ -1,5 +1,6 @@
 import React from 'react';
 import { createRoot } from 'react-dom/client';
+import { BrowserRouter } from 'react-router-dom';
 import { registerApplication, start } from 'single-spa';
 import Shell from './components/Shell';
 import './styles.css';
@@ -27,6 +28,8 @@ start();
 
 createRoot(document.getElementById('app')!).render(
     <React.StrictMode>
-        <Shell />
+        <BrowserRouter>
+            <Shell />
+        </BrowserRouter>
     </React.StrictMode>,
 );

@@ -1,31 +1,29 @@
-type NavLink = {
-    href: string;
+import { NavLink } from 'react-router-dom';
+
+type NavItem = {
+    to: string;
     label: string;
 };
 
-const links: NavLink[] = [
-    { href: '/mfe-one', label: 'MFE One' },
-    { href: '/mfe-two', label: 'MFE Two' },
+const links: NavItem[] = [
+    { to: '/mfe-one', label: 'MFE One' },
+    { to: '/mfe-two', label: 'MFE Two' },
 ];
 
-type SidebarProps = {
-    currentPath: string;
-};
-
-export default function Sidebar({ currentPath }: SidebarProps) {
+export default function Sidebar() {
     return (
         <nav className="sidebar">
-            <a href="/" className={currentPath === '/' ? 'active' : ''}>
+            <NavLink to="/" end className={({ isActive }) => (isActive ? 'active' : '')}>
                 Home
-            </a>
+            </NavLink>
             {links.map((link) => (
-                <a
-                    key={link.href}
-                    href={link.href}
-                    className={currentPath.startsWith(link.href) ? 'active' : ''}
+                <NavLink
+                    key={link.to}
+                    to={link.to}
+                    className={({ isActive }) => (isActive ? 'active' : '')}
                 >
                     {link.label}
-                </a>
+                </NavLink>
             ))}
         </nav>
     );

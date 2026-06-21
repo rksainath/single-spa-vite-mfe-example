@@ -56,7 +56,7 @@ dist
 mkdir -p root-config/src/components
 cd root-config
 npm init -y
-npm install react react-dom single-spa
+npm install react react-dom react-router-dom single-spa
 npm install -D vite @vitejs/plugin-react typescript vite-plugin-single-spa
 ```
 
@@ -149,6 +149,7 @@ Standard Vite entry — the plugin injects the import-map `<script>` automatical
 ```tsx
 import React from 'react';
 import { createRoot } from 'react-dom/client';
+import { BrowserRouter } from 'react-router-dom';
 import { registerApplication, start } from 'single-spa';
 import Shell from './components/Shell';
 import './styles.css';
@@ -176,10 +177,16 @@ start();
 
 createRoot(document.getElementById('app')!).render(
     <React.StrictMode>
-        <Shell />
+        <BrowserRouter>
+            <Shell />
+        </BrowserRouter>
     </React.StrictMode>,
 );
 ```
+
+`registerApplication`'s `activeWhen` is completely independent of `BrowserRouter` — single-spa watches
+the URL itself (see the routing note below), so wrapping the shell in a router doesn't change how or
+when the MFEs mount.
 
 > **Gotcha**: writing `import('@poc/mfe-one')` directly (a literal string) breaks both `vite
 > dev` and `vite build` — they statically resolve literal dynamic-import specifiers, and
@@ -209,38 +216,30 @@ declare module '@poc/mfe-two' {
 }
 ```
 
-### The shell UI: `Shell.tsx`, `TopBar.tsx`, `Sidebar.tsx`
+### The shell UI: `Shell.tsx`, `TopBar.tsx`, `Sidebar.tsx`, `Welcome.tsx`
 
 `Shell.tsx` is a normal React component (not single-spa-managed) that renders the top bar and
 sidebar itself, and provides the `<div id="single-spa-content" />` mount point that
-`registerApplication`'s `domElementGetter` (in each MFE) targets:
+`registerApplication`'s `domElementGetter` (in each MFE) targets. Because `main.tsx` already wraps
+it in a `<BrowserRouter>`, the shell can use `react-router-dom`'s own primitives (`<Routes>`,
+`<Route>`) for its own pages, instead of hand-rolling path-tracking state:
 
 ```tsx
-import { useEffect, useState } from 'react';
+import { Route, Routes } from 'react-router-dom';
 import TopBar from './TopBar';
 import Sidebar from './Sidebar';
+import Welcome from './Welcome';
 
 export default function Shell() {
-    const [path, setPath] = useState(window.location.pathname);
-
-    useEffect(() => {
-        const onRoute = () => setPath(window.location.pathname);
-        window.addEventListener('single-spa:routing-event', onRoute);
-        return () => window.removeEventListener('single-spa:routing-event', onRoute);
-    }, []);
-
     return (
         <div className="shell">
             <TopBar />
             <div className="shell-body">
-                <Sidebar currentPath={path} />
+                <Sidebar />
                 <main className="shell-content">
-                    {path === '/' && (
-                        <div className="welcome">
-                            <h2>Welcome</h2>
-                            <p>Select a micro-frontend from the sidebar to mount it below.</p>
-                        </div>
-                    )}
+                    <Routes>
+                        <Route path="/" element={<Welcome />} />
+                    </Routes>
                     <div id="single-spa-content" />
                 </main>
             </div>
@@ -249,22 +248,60 @@ export default function Shell() {
 }
 ```
 
-`single-spa:routing-event` is single-spa's own event, fired after every reroute completes — the
-right way for non-managed shell code to react to navigation. Sidebar links are plain `<a href>`
-tags; single-spa auto-intercepts same-origin anchor clicks, so no router library or `onClick`
-handler is needed:
+```tsx
+// src/components/Welcome.tsx
+export default function Welcome() {
+    return (
+        <div className="welcome">
+            <h2>Welcome</h2>
+            <p>Select a micro-frontend from the sidebar to mount it below.</p>
+        </div>
+    );
+}
+```
+
+Note there's no `<Route>` for `/mfe-one` or `/mfe-two` — those paths aren't rendered by
+react-router at all. The `<div id="single-spa-content" />` is rendered unconditionally alongside
+`<Routes>`, and single-spa mounts/unmounts each MFE into it directly based on `activeWhen`,
+entirely outside react-router's render tree.
+
+Sidebar links use `<NavLink>` instead of plain `<a href>`, which computes its own active state
+from router context — no manually-tracked `currentPath` prop needed:
 
 ```tsx
-export default function Sidebar({ currentPath }: { currentPath: string }) {
+import { NavLink } from 'react-router-dom';
+
+const links = [
+    { to: '/mfe-one', label: 'MFE One' },
+    { to: '/mfe-two', label: 'MFE Two' },
+];
+
+export default function Sidebar() {
     return (
         <nav className="sidebar">
-            <a href="/" className={currentPath === '/' ? 'active' : ''}>Home</a>
-            <a href="/mfe-one" className={currentPath.startsWith('/mfe-one') ? 'active' : ''}>MFE One</a>
-            <a href="/mfe-two" className={currentPath.startsWith('/mfe-two') ? 'active' : ''}>MFE Two</a>
+            <NavLink to="/" end className={({ isActive }) => (isActive ? 'active' : '')}>
+                Home
+            </NavLink>
+            {links.map((link) => (
+                <NavLink key={link.to} to={link.to} className={({ isActive }) => (isActive ? 'active' : '')}>
+                    {link.label}
+                </NavLink>
+            ))}
         </nav>
     );
 }
 ```
+
+`end` on the `Home` link matters: without it, `NavLink to="/"` matches *every* path (since every
+path starts with `/`), so it would always show as active.
+
+> **Why not a manual `single-spa:routing-event` listener?** That works fine without a router (see
+> the [README's routing-coexistence note](README.md#how-the-shells-router-and-single-spas-routing-coexist)),
+> but once `react-router-dom` is already wrapping the shell, it's the redundant approach: single-spa
+> monkey-patches `history.pushState`/`replaceState` to also dispatch a synthetic `popstate` event,
+> which is exactly what `BrowserRouter` listens for to re-render. So `useLocation`/`NavLink` already
+> stay in sync with single-spa's reroutes for free, whether navigation was triggered by a `NavLink`
+> click, a plain anchor, or the browser's back/forward buttons.
 
 ### TypeScript config (solution-style split)
 

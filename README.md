@@ -4,7 +4,8 @@ Three independent React + TypeScript apps wired together with [single-spa](https
 [vite-plugin-single-spa](https://github.com/WJSoftware/vite-plugin-single-spa):
 
 - **root-config** (port 9000) — the shell. Renders the top bar and sidebar itself (a regular React app,
-  not single-spa managed) and registers/orchestrates the two micro-frontends with `single-spa`.
+  not single-spa managed), uses `react-router-dom` for its own navigation/active-link state, and
+  registers/orchestrates the two micro-frontends with `single-spa`.
 - **mfe-one** (port 4101) — React micro-frontend mounted at `/mfe-one`.
 - **mfe-two** (port 4102) — React micro-frontend mounted at `/mfe-two`.
 
@@ -55,3 +56,23 @@ exists as a key in the browser's `<script type="overridable-importmap">`. Routin
 variable first makes the import non-statically-analyzable, so both tools leave it untouched for the
 browser to resolve natively at runtime. `/* @vite-ignore */` alone (without the variable indirection) is
 not enough to suppress this.
+
+## How the shell's router and single-spa's routing coexist
+
+`root-config` wraps `<Shell />` in a `react-router-dom` `<BrowserRouter>` ([main.tsx](root-config/src/main.tsx)),
+and `Sidebar.tsx` uses `<NavLink>` instead of plain `<a href>`. This works alongside — not instead of —
+single-spa's own routing (`activeWhen` in `main.tsx`) because of how each side reacts to URL changes:
+
+- `react-router-dom`'s `BrowserRouter` listens for the browser's `popstate` event to know when to
+  re-render with a new location.
+- `single-spa` monkey-patches `window.history.pushState`/`replaceState` (see `historyApiIsPatched` in
+  `single-spa`'s source) and, after calling through to the native method, manually dispatches a
+  synthetic `popstate` event — because the browser does **not** natively fire `popstate` on
+  `pushState`/`replaceState` calls (only on actual back/forward navigation).
+
+So whether navigation is triggered by clicking a `NavLink` (which calls `history.pushState` under the
+hood) or by the browser's back/forward buttons, single-spa's patch ensures a `popstate` event fires
+either way — keeping `react-router`'s `useLocation`/`NavLink` state and single-spa's `activeWhen`
+matching perfectly in sync, with neither needing to know about the other. This is also why `Shell.tsx`
+no longer needs a manual `single-spa:routing-event` listener: `react-router-dom` already re-renders on
+every relevant navigation, sourced from the same underlying event single-spa relies on.
