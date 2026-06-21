@@ -8,11 +8,7 @@ export default function Shell() {
     useEffect(() => {
         const onRoute = () => setPath(window.location.pathname);
         window.addEventListener('single-spa:routing-event', onRoute);
-        window.addEventListener('popstate', onRoute);
-        return () => {
-            window.removeEventListener('single-spa:routing-event', onRoute);
-            window.removeEventListener('popstate', onRoute);
-        };
+        return () => window.removeEventListener('single-spa:routing-event', onRoute);
     }, []);
 
     return (
