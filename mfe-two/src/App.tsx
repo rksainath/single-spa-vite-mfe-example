@@ -1,13 +1,28 @@
 import { useState } from 'react';
+import { Provider, useDispatch, useSelector } from 'react-redux';
+import { added, type AppDispatch, type AppStore, type RootState } from '@poc/shared-store';
 import './App.css';
 
-export default function App() {
-    const [items, setItems] = useState(['Wire up root config', 'Build MFE one']);
+type AppProps = {
+    store: AppStore;
+};
+
+export default function App({ store }: AppProps) {
+    return (
+        <Provider store={store}>
+            <TodoList />
+        </Provider>
+    );
+}
+
+function TodoList() {
+    const items = useSelector((state: RootState) => state.todos.items);
+    const dispatch = useDispatch<AppDispatch>();
     const [text, setText] = useState('');
 
     const addItem = () => {
         if (!text.trim()) return;
-        setItems((prev) => [...prev, text.trim()]);
+        dispatch(added(text.trim()));
         setText('');
     };
 

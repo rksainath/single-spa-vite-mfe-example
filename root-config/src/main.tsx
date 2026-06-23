@@ -2,6 +2,7 @@ import React from 'react';
 import { createRoot } from 'react-dom/client';
 import { BrowserRouter } from 'react-router-dom';
 import { registerApplication, start } from 'single-spa';
+import { createAppStore } from '@poc/shared-store';
 import Shell from './components/Shell';
 import './styles.css';
 
@@ -12,16 +13,24 @@ import './styles.css';
 const mfeOneSpecifier = '@poc/mfe-one';
 const mfeTwoSpecifier = '@poc/mfe-two';
 
+// Created once and handed to every MFE via customProps. single-spa-react forwards
+// customProps straight onto each MFE's root component as plain React props, which is
+// the only thing that crosses the boundary — React Context can't, since each MFE
+// mounts into its own separate React root, not as a descendant of this tree.
+const store = createAppStore();
+
 registerApplication({
     name: '@poc/mfe-one',
     app: () => import(/* @vite-ignore */ mfeOneSpecifier),
     activeWhen: ['/mfe-one'],
+    customProps: { store },
 });
 
 registerApplication({
     name: '@poc/mfe-two',
     app: () => import(/* @vite-ignore */ mfeTwoSpecifier),
     activeWhen: ['/mfe-two'],
+    customProps: { store },
 });
 
 start();

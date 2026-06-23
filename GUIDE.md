@@ -462,18 +462,144 @@ Same solution-style split as `root-config` (`tsconfig.json` / `tsconfig.app.json
 Identical structure — change the package name, `serverPort` (4102), `cssLifecycleFactory('mfe-two')`,
 and the `App.tsx` UI (a small todo list in this POC instead of a counter).
 
-## 4. Install and verify
+## 4. Add a shared Redux store (`shared`)
+
+Switching MFEs unmounts the outgoing one and mounts a fresh instance of the next one — that's
+single-spa's lifecycle, not a bug — so any `useState` inside an MFE's `App` resets every time you
+navigate away and back. A React Context `Provider` doesn't fix this: each MFE mounts into its own
+separate React root (`single-spa-react` calls `ReactDOMClient.createRoot` per MFE), never as a
+descendant of `root-config`'s tree, so Context can't cross that boundary regardless of where the
+`Provider` lives.
+
+The fix is a plain workspace package holding a Redux Toolkit store, created **once** in
+`root-config` and handed to each MFE as a prop — not through Context, but through single-spa's own
+`customProps`, which it merges into the props every lifecycle call receives, and which
+`single-spa-react` forwards directly onto the MFE's root component.
+
+```bash
+mkdir -p shared/src/store shared/src/features/counter shared/src/features/todos
+cd shared
+npm init -y
+npm install @reduxjs/toolkit
+npm install -D typescript
+```
+
+Name it in `package.json` and point `main`/`types` straight at the TypeScript source — with
+`moduleResolution: "bundler"` (already set in every consumer's `tsconfig.app.json`), both `tsc` and
+Vite resolve these to the `.ts` file directly, no build step needed for this package:
+
+```json
+{
+  "name": "@poc/shared-store",
+  "private": true,
+  "type": "module",
+  "main": "./src/index.ts",
+  "types": "./src/index.ts",
+  "dependencies": { "@reduxjs/toolkit": "^2.0.0" }
+}
+```
+
+One slice per feature (`src/features/counter/slice.ts`, `src/features/todos/slice.ts`), combined
+into a root reducer, and a factory — not a singleton — so standalone mode and tests can each create
+their own isolated instance:
+
+```ts
+// src/store/rootReducer.ts
+import { combineReducers } from '@reduxjs/toolkit';
+import counterReducer from '../features/counter/slice';
+import todosReducer from '../features/todos/slice';
+
+const rootReducer = combineReducers({ counter: counterReducer, todos: todosReducer });
+export type RootState = ReturnType<typeof rootReducer>;
+export default rootReducer;
+```
+
+```ts
+// src/store/store.ts
+import { configureStore } from '@reduxjs/toolkit';
+import rootReducer from './rootReducer';
+
+export function createAppStore() {
+    return configureStore({ reducer: rootReducer });
+}
+export type AppStore = ReturnType<typeof createAppStore>;
+export type AppDispatch = AppStore['dispatch'];
+export type { RootState } from './rootReducer';
+```
+
+Add `"shared"` to the root `package.json`'s `workspaces` array, then in `root-config`,
+`mfe-one`, and `mfe-two`'s `package.json`, depend on it with `"@poc/shared-store": "*"` (npm
+workspaces resolves `*` to the local package via a symlink — no version to bump). `mfe-one` and
+`mfe-two` additionally need their own `react-redux` dependency, since each wraps its **own** React
+tree with its **own** `<Provider>`.
+
+In `root-config/src/main.tsx`, create the store once and pass it to both registrations:
+
+```tsx
+import { createAppStore } from '@poc/shared-store';
+
+const store = createAppStore();
+
+registerApplication({
+    name: '@poc/mfe-one',
+    app: () => import(/* @vite-ignore */ mfeOneSpecifier),
+    activeWhen: ['/mfe-one'],
+    customProps: { store },
+});
+// ...same customProps: { store } for mfe-two
+```
+
+In each MFE's `App.tsx`, accept `store` as a prop and wrap a child component that does the actual
+`useSelector`/`useDispatch` work:
+
+```tsx
+// mfe-one/src/App.tsx
+import { Provider, useDispatch, useSelector } from 'react-redux';
+import { incremented, type AppDispatch, type AppStore, type RootState } from '@poc/shared-store';
+
+export default function App({ store }: { store: AppStore }) {
+    return (
+        <Provider store={store}>
+            <Counter />
+        </Provider>
+    );
+}
+
+function Counter() {
+    const count = useSelector((state: RootState) => state.counter.value);
+    const dispatch = useDispatch<AppDispatch>();
+    return <button onClick={() => dispatch(incremented())}>Count is {count}</button>;
+}
+```
+
+This is safe even though Context still can't cross the single-spa boundary: `Provider` and its
+consumers all live inside this one MFE's own tree. Only the `store` object — held outside React, in
+`root-config`'s module scope — needs to survive the remount, and it does, because unmounting an MFE
+never touches `root-config`.
+
+Finally, `standalone.tsx` (no single-spa, no `customProps`) creates its own throwaway store via the
+same factory:
+
+```tsx
+// mfe-one/src/standalone.tsx
+import { createAppStore } from '@poc/shared-store';
+const store = createAppStore();
+createRoot(document.getElementById('single-spa-content')!).render(<App store={store} />);
+```
+
+## 5. Install and verify
 
 From the workspace root:
 
 ```bash
-npm install        # installs all three workspaces in one pass
+npm install        # installs all four workspaces in one pass
 npm run dev         # starts all three dev servers; open http://localhost:9000
 npm run build       # builds mfe-one, mfe-two, then root-config in order
 ```
 
 In the browser at `http://localhost:9000`, the sidebar should navigate between Home / MFE One /
-MFE Two without a full page reload, each MFE mounting into `#single-spa-content`.
+MFE Two without a full page reload, each MFE mounting into `#single-spa-content`. Increment MFE
+One's counter, switch to MFE Two, switch back — the count should still be there.
 
 ## Why this differs from "classic" single-spa tutorials
 
@@ -490,3 +616,8 @@ Each project (`root-config`, `mfe-one`, `mfe-two`) currently bundles its own ind
 of React/ReactDOM — there's no `external` config or shared import-map entries. That's fine for
 a POC; for a real multi-team setup you'd typically add `react`/`react-dom` as import-map
 externals shared across all three, to avoid shipping the same library three times.
+
+`@poc/shared-store` doesn't change this — it's a *source* package (plain `.ts`, resolved via
+`moduleResolution: "bundler"`), not an externalized runtime dependency, so each MFE still bundles
+its own copy of `@reduxjs/toolkit` and `react-redux`. What's shared is the *store instance* at
+runtime (one object, passed by reference via `customProps`), not the library code that creates it.

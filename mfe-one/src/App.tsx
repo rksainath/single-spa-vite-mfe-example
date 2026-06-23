@@ -1,14 +1,28 @@
-import { useState } from 'react';
+import { Provider, useDispatch, useSelector } from 'react-redux';
+import { incremented, type AppDispatch, type AppStore, type RootState } from '@poc/shared-store';
 import './App.css';
 
-export default function App() {
-    const [count, setCount] = useState(0);
+type AppProps = {
+    store: AppStore;
+};
+
+export default function App({ store }: AppProps) {
+    return (
+        <Provider store={store}>
+            <Counter />
+        </Provider>
+    );
+}
+
+function Counter() {
+    const count = useSelector((state: RootState) => state.counter.value);
+    const dispatch = useDispatch<AppDispatch>();
 
     return (
         <div className="mfe-one">
             <h2>MFE One</h2>
             <p>Independent React + TypeScript micro-frontend, served from port 4101.</p>
-            <button onClick={() => setCount((c) => c + 1)}>Count is {count}</button>
+            <button onClick={() => dispatch(incremented())}>Count is {count}</button>
         </div>
     );
 }
