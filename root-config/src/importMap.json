@@ -1,6 +1,8 @@
 {
     "imports": {
         "@poc/mfe-one": "http://localhost:4101/spa.js",
-        "@poc/mfe-two": "http://localhost:4102/spa.js"
+        "@poc/mfe-two": "http://localhost:4102/spa.js",
+        "@poc/mfe-three": "http://localhost:4103/spa.js",
+        "@poc/mfe-four": "http://localhost:4104/spa.js"
     }
 }

@@ -6,11 +6,13 @@
     "shared",
     "root-config",
     "mfe-one",
-    "mfe-two"
+    "mfe-two",
+    "mfe-three",
+    "mfe-four"
   ],
   "scripts": {
-    "dev": "concurrently -n root-config,mfe-one,mfe-two -c blue,green,magenta \"npm run dev -w root-config\" \"npm run dev -w mfe-one\" \"npm run dev -w mfe-two\"",
-    "build": "npm run build -w mfe-one && npm run build -w mfe-two && npm run build -w root-config"
+    "dev": "concurrently -n root-config,mfe-one,mfe-two,mfe-three,mfe-four -c blue,green,magenta,yellow,cyan \"npm run dev -w root-config\" \"npm run dev -w mfe-one\" \"npm run dev -w mfe-two\" \"npm run dev -w mfe-three\" \"npm run dev -w mfe-four\"",
+    "build": "npm run build -w mfe-one && npm run build -w mfe-two && npm run build -w mfe-three && npm run build -w mfe-four && npm run build -w root-config"
   },
   "devDependencies": {
     "concurrently": "^10.0.3"

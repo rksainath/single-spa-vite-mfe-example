@@ -1,15 +1,19 @@
 # single-spa + Vite POC
 
-Three independent React + TypeScript apps wired together with [single-spa](https://single-spa.js.org/) and
+Five independent React + TypeScript apps wired together with [single-spa](https://single-spa.js.org/) and
 [vite-plugin-single-spa](https://github.com/WJSoftware/vite-plugin-single-spa):
 
 - **root-config** (port 9000) — the shell. Renders the top bar and sidebar itself (a regular React app,
   not single-spa managed), uses `react-router-dom` for its own navigation/active-link state, and
-  registers/orchestrates the two micro-frontends with `single-spa`.
-- **mfe-one** (port 4101) — React micro-frontend mounted at `/mfe-one`.
+  registers/orchestrates the micro-frontends with `single-spa`.
+- **mfe-one** (port 4101) — React micro-frontend mounted at `/mfe-one`. Also mounted as a **parcel** on
+  the Welcome page — see [Parcels](#parcels-mounting-an-mfe-without-a-route) below.
 - **mfe-two** (port 4102) — React micro-frontend mounted at `/mfe-two`.
+- **mfe-three** / **mfe-four** (ports 4103/4104) — never registered as applications; mounted only as
+  **parcels**, directly in `Shell.tsx`, so they're present on every route instead of being gated by a
+  path — see [Multiple parcels](#multiple-parcels-mfe-three-mfe-four-always-on-in-the-shell) below.
 - **shared** (`@poc/shared-store`) — not served, not a single-spa app; a plain workspace package holding
-  the Redux Toolkit store both MFEs read from (`store/store.ts`, `store/rootReducer.ts`,
+  the Redux Toolkit store mfe-one/mfe-two read from (`store/store.ts`, `store/rootReducer.ts`,
   `features/*/slice.ts`), mirroring the `store.ts`/`rootReducer.ts`/`slice.ts` layout used by real
   enterprise Redux apps.
 
@@ -23,7 +27,7 @@ instead of a framework-free one, and `cssLifecycleFactory` for per-MFE CSS mount
 npm install
 ```
 
-(npm workspaces install all three projects' dependencies in one pass.)
+(npm workspaces install all five projects' dependencies in one pass.)
 
 ## Run
 
@@ -31,12 +35,14 @@ npm install
 npm run dev
 ```
 
-This starts all three Vite dev servers concurrently. Open http://localhost:9000 and use the sidebar to
-navigate between MFE One and MFE Two — each is loaded on demand via the import map declared in
-`root-config/src/importMap.dev.json`.
+This starts all five Vite dev servers concurrently. Open http://localhost:9000 — the Notifications and
+Server Clock widgets (mfe-three/mfe-four) mount immediately and stay mounted no matter where you
+navigate; use the sidebar to switch between MFE One and MFE Two, each loaded on demand via the import
+map declared in `root-config/src/importMap.dev.json`.
 
 Each MFE can also run standalone (mounts its `App` directly, bypassing single-spa) via
-`npm run dev -w mfe-one` / `npm run dev -w mfe-two` and visiting its own port directly.
+`npm run dev -w mfe-one` (or `-w mfe-two`, `-w mfe-three`, `-w mfe-four`) and visiting its own port
+directly.
 
 A dev-only "import map overrides" UI (bottom-right popup) is enabled in the root config, letting you swap
 any MFE's URL at runtime — e.g. to point `@poc/mfe-one` at a build you're running on a different port.
@@ -47,8 +53,9 @@ any MFE's URL at runtime — e.g. to point `@poc/mfe-one` at a build you're runn
 npm run build
 ```
 
-Builds both MFEs first, then the root config (which inlines `src/importMap.json`). The production import
-map currently still points at `localhost`; for real deployment, replace it with the actual hosted URLs.
+Builds all four MFEs first, then the root config (which inlines `src/importMap.json`). The production
+import map currently still points at `localhost`; for real deployment, replace it with the actual hosted
+URLs.
 
 ## Gotcha: loading MFEs by import-map specifier
 
@@ -154,3 +161,37 @@ Two things to note:
   parcel-mounted counter on this page and the routed `/mfe-one` page share the same count: both
   are handed the identical `store` instance, just via two different (but structurally identical)
   single-spa mounting APIs.
+
+## Multiple parcels: mfe-three, mfe-four (always-on in the shell)
+
+mfe-one shows a module that's *both* an application and a parcel. mfe-three and mfe-four
+([mfe-three](mfe-three), [mfe-four](mfe-four)) show the other end of the spectrum: modules that are
+**only ever** parcels — they have no `registerApplication` call, no `activeWhen`, and no route at all.
+
+[Shell.tsx](root-config/src/components/Shell.tsx) renders both as `<Parcel>` elements in a
+`<aside className="shell-widgets">`, as a sibling of `<Routes>` rather than inside any one `<Route>`:
+
+```tsx
+<aside className="shell-widgets">
+    <Parcel config={() => import(/* @vite-ignore */ '@poc/mfe-three')} mountParcel={mountRootParcel} wrapClassName="shell-widget" />
+    <Parcel config={() => import(/* @vite-ignore */ '@poc/mfe-four')} mountParcel={mountRootParcel} wrapClassName="shell-widget" />
+</aside>
+```
+
+Because `Shell` itself never unmounts while the app is running, these two parcels mount exactly once
+and stay mounted for the whole session — switching between Home, MFE One, and MFE Two doesn't touch
+them at all (the Server Clock widget keeps ticking the entire time, which is an easy way to confirm
+this in the running app). This is the contrast worth noticing across all three parcel usages in this
+POC:
+
+| Module    | Mounted as                | Lifecycle owner                              |
+|-----------|---------------------------|-----------------------------------------------|
+| mfe-one   | application (`/mfe-one`)  | single-spa's router, via `activeWhen`          |
+| mfe-one   | parcel (Welcome page)     | `Welcome`'s own render — mounts/unmounts with `Welcome` |
+| mfe-two   | application (`/mfe-two`)  | single-spa's router, via `activeWhen`          |
+| mfe-three | parcel (shell-level)      | `Shell`'s own render — mounted once, never unmounts |
+| mfe-four  | parcel (shell-level)      | `Shell`'s own render — mounted once, never unmounts |
+
+Adding a fifth parcel anywhere else (a modal, a hover card, a button-triggered panel) is the same
+three-line `<Parcel config={...} mountParcel={mountRootParcel} ... />` — only *where* you render it,
+and what condition gates that render, changes.

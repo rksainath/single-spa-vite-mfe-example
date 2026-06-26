@@ -1,0 +1,11 @@
+.mfe-four {
+    border: 2px dashed #059669;
+    border-radius: 8px;
+    padding: 1rem;
+}
+
+.mfe-four p {
+    font-size: 1.5rem;
+    font-weight: 600;
+    margin: 0;
+}

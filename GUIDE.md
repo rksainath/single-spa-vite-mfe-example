@@ -659,14 +659,69 @@ Two gotchas:
   `registerApplication`'s `customProps`. Passing `store={store}` here is what lets the
   parcel-mounted widget and the routed `/mfe-one` page share the same Redux store instance.
 
-## 6. Install and verify
+## 6. Add always-on shell-level parcels (mfe-three, mfe-four)
+
+Step 5 showed one module (mfe-one) used as both an application and a parcel. The other useful
+shape is a module that's **only ever** a parcel — never `registerApplication`'d, never gated by a
+route — mounted unconditionally wherever the shell renders it.
+
+Scaffold `mfe-three`/`mfe-four` identically to `mfe-one`/`mfe-two` (same `package.json`,
+`vite.config.ts` with their own `serverPort`, `tsconfig*`, `spa.tsx`), but skip the
+`registerApplication` call entirely — they're never registered as applications, so there's no
+`activeWhen` for them. Give each its own small `App.tsx` (a notifications list, a ticking clock —
+anything that makes it obvious if it ever remounts unexpectedly).
+
+Add an ambient module declaration for each in `single-spa-apps.d.ts` (same shape as mfe-one/two —
+`<Parcel>`'s `config` prop still resolves the specifier via a dynamic `import()`, so TypeScript
+needs it even though single-spa's router never will), plus dev/prod import-map entries pointing at
+their ports.
+
+Render them in `Shell.tsx`, as a sibling of `<Routes>` rather than inside any one `<Route>`, so
+they aren't tied to whichever page is currently showing:
+
+```tsx
+// Shell.tsx
+import Parcel from 'single-spa-react/parcel';
+import { mountRootParcel } from 'single-spa';
+
+const mfeThreeSpecifier = '@poc/mfe-three';
+const mfeFourSpecifier = '@poc/mfe-four';
+
+export default function Shell({ store }: { store: AppStore }) {
+    return (
+        <div className="shell">
+            <TopBar />
+            <div className="shell-body">
+                <Sidebar />
+                <main className="shell-content">
+                    <Routes>
+                        <Route path="/" element={<Welcome store={store} />} />
+                    </Routes>
+                    <div id="single-spa-content" />
+                </main>
+                <aside className="shell-widgets">
+                    <Parcel config={() => import(/* @vite-ignore */ mfeThreeSpecifier)} mountParcel={mountRootParcel} wrapClassName="shell-widget" />
+                    <Parcel config={() => import(/* @vite-ignore */ mfeFourSpecifier)} mountParcel={mountRootParcel} wrapClassName="shell-widget" />
+                </aside>
+            </div>
+        </div>
+    );
+}
+```
+
+Because `Shell` itself never unmounts during the session, these two parcels mount exactly once and
+stay mounted the whole time — switching between Home, MFE One, and MFE Two doesn't touch them at
+all. That's the key difference from step 5's Welcome-page parcel, which mounts/unmounts along with
+`Welcome` every time you navigate to or away from `/`.
+
+## 7. Install and verify
 
 From the workspace root:
 
 ```bash
-npm install        # installs all four workspaces in one pass
-npm run dev         # starts all three dev servers; open http://localhost:9000
-npm run build       # builds mfe-one, mfe-two, then root-config in order
+npm install        # installs all six workspaces in one pass
+npm run dev         # starts all five dev servers; open http://localhost:9000
+npm run build       # builds all four MFEs, then root-config, in order
 ```
 
 In the browser at `http://localhost:9000`, the sidebar should navigate between Home / MFE One /
@@ -674,7 +729,9 @@ MFE Two without a full page reload, each MFE mounting into `#single-spa-content`
 One's counter, switch to MFE Two, switch back — the count should still be there. The Home page
 should also show MFE One's counter mounted inline as a parcel — incrementing it there and then
 navigating to the routed `/mfe-one` page should show the same count, confirming both mounting
-modes share the one store instance.
+modes share the one store instance. The Notifications and Server Clock widgets (mfe-three/four)
+should be visible regardless of which page you're on, with the clock continuing to tick the whole
+time — confirming they mounted once at the shell level and never remount on navigation.
 
 ## Why this differs from "classic" single-spa tutorials
 
@@ -687,10 +744,10 @@ modes share the one store instance.
 
 ## Known limitation: no shared dependencies
 
-Each project (`root-config`, `mfe-one`, `mfe-two`) currently bundles its own independent copy
-of React/ReactDOM — there's no `external` config or shared import-map entries. That's fine for
-a POC; for a real multi-team setup you'd typically add `react`/`react-dom` as import-map
-externals shared across all three, to avoid shipping the same library three times.
+Each project (`root-config`, `mfe-one`, `mfe-two`, `mfe-three`, `mfe-four`) currently bundles its
+own independent copy of React/ReactDOM — there's no `external` config or shared import-map entries.
+That's fine for a POC; for a real multi-team setup you'd typically add `react`/`react-dom` as
+import-map externals shared across all of them, to avoid shipping the same library five times.
 
 `@poc/shared-store` doesn't change this — it's a *source* package (plain `.ts`, resolved via
 `moduleResolution: "bundler"`), not an externalized runtime dependency, so each MFE still bundles
