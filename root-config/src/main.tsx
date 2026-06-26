@@ -38,7 +38,7 @@ start();
 createRoot(document.getElementById('app')!).render(
     <React.StrictMode>
         <BrowserRouter>
-            <Shell />
+            <Shell store={store} />
         </BrowserRouter>
     </React.StrictMode>,
 );

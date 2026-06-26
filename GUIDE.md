@@ -587,7 +587,79 @@ const store = createAppStore();
 createRoot(document.getElementById('single-spa-content')!).render(<App store={store} />);
 ```
 
-## 5. Install and verify
+## 5. Add a parcel-mounted demo
+
+single-spa has a second mounting mode besides `registerApplication` + `activeWhen`: **parcels**.
+A parcel uses the exact same lifecycle shape (`bootstrap`/`mount`/`unmount`/optional `update`) as
+an application — `mfe-one/src/spa.tsx` already qualifies as a valid `ParcelConfigObject` with zero
+changes. The difference is purely in how it gets mounted: applications are mounted automatically by
+single-spa's router; parcels are mounted imperatively, wherever you choose, via `mountRootParcel`
+(single-spa core) or `single-spa-react`'s `<Parcel>` component.
+
+```bash
+cd root-config
+npm install single-spa-react
+```
+
+Pass the store down into `Shell` so it can reach `Welcome`:
+
+```tsx
+// main.tsx
+createRoot(document.getElementById('app')!).render(
+    <React.StrictMode>
+        <BrowserRouter>
+            <Shell store={store} />
+        </BrowserRouter>
+    </React.StrictMode>,
+);
+```
+
+```tsx
+// Shell.tsx
+export default function Shell({ store }: { store: AppStore }) {
+    // ...
+    <Route path="/" element={<Welcome store={store} />} />
+}
+```
+
+Then render `<Parcel>` in `Welcome.tsx`, pointed at the same `@poc/mfe-one` module already
+registered as an application:
+
+```tsx
+// Welcome.tsx
+import Parcel from 'single-spa-react/parcel';
+import { mountRootParcel } from 'single-spa';
+import type { AppStore } from '@poc/shared-store';
+
+const mfeOneSpecifier = '@poc/mfe-one';
+
+export default function Welcome({ store }: { store: AppStore }) {
+    return (
+        <div className="welcome">
+            {/* ... */}
+            <Parcel
+                config={() => import(/* @vite-ignore */ mfeOneSpecifier)}
+                mountParcel={mountRootParcel}
+                store={store}
+                wrapClassName="welcome-parcel"
+            />
+        </div>
+    );
+}
+```
+
+Two gotchas:
+
+- **`mountParcel={mountRootParcel}` is required.** `<Parcel>` looks for a `mountParcel` function
+  via a `SingleSpaContext.Provider` ancestor, which only exists inside a tree rendered through
+  `singleSpaReact()`'s lifecycle wrapper. `Shell` is rendered by a plain `createRoot(...).render()`
+  call, so there's no such ancestor — `mountRootParcel` must be passed explicitly, or `<Parcel>`
+  throws at mount time.
+- **Extra props on `<Parcel>` become that parcel's `customProps`**, exactly like
+  `registerApplication`'s `customProps`. Passing `store={store}` here is what lets the
+  parcel-mounted widget and the routed `/mfe-one` page share the same Redux store instance.
+
+## 6. Install and verify
 
 From the workspace root:
 
@@ -599,7 +671,10 @@ npm run build       # builds mfe-one, mfe-two, then root-config in order
 
 In the browser at `http://localhost:9000`, the sidebar should navigate between Home / MFE One /
 MFE Two without a full page reload, each MFE mounting into `#single-spa-content`. Increment MFE
-One's counter, switch to MFE Two, switch back — the count should still be there.
+One's counter, switch to MFE Two, switch back — the count should still be there. The Home page
+should also show MFE One's counter mounted inline as a parcel — incrementing it there and then
+navigating to the routed `/mfe-one` page should show the same count, confirming both mounting
+modes share the one store instance.
 
 ## Why this differs from "classic" single-spa tutorials
 

@@ -119,3 +119,38 @@ is still there, with the same data, the next time that MFE mounts.
 Running an MFE standalone (`npm run dev -w mfe-one`, bypassing single-spa entirely) has no
 `customProps`, so `standalone.tsx` creates its own throwaway store via the same `createAppStore()`
 factory instead.
+
+## Parcels: mounting an MFE without a route
+
+single-spa has a second way to mount a micro-frontend besides `registerApplication` +
+`activeWhen`: **parcels**. A parcel uses the exact same lifecycle shape (`bootstrap` / `mount` /
+`unmount` / optional `update`) as an application — the only difference is *how* it gets mounted.
+Applications are mounted automatically by single-spa's router based on `activeWhen`; parcels are
+mounted imperatively, wherever you want, via `mountRootParcel` (single-spa core) or
+`single-spa-react`'s `<Parcel>` component.
+
+The Welcome page ([Welcome.tsx](root-config/src/components/Welcome.tsx)) demonstrates this by
+mounting mfe-one's `spa.tsx` — the **same module** already registered as an application at
+`/mfe-one` — a second time, as a parcel, with no MFE-side code changes:
+
+```tsx
+<Parcel
+    config={() => import(/* @vite-ignore */ '@poc/mfe-one')}
+    mountParcel={mountRootParcel}
+    store={store}
+    wrapClassName="welcome-parcel"
+/>
+```
+
+Two things to note:
+
+- **`mountParcel={mountRootParcel}` is required here.** `<Parcel>` normally finds a `mountParcel`
+  function from a `SingleSpaContext.Provider` ancestor — but that context only exists inside a tree
+  rendered by `singleSpaReact()`'s own lifecycle wrapper. `Shell` is rendered by a plain
+  `createRoot(...).render(<Shell />)` call in `main.tsx`, so there's no such ancestor, and
+  `mountRootParcel` (imported from `single-spa`) must be passed explicitly.
+- **Extra props on `<Parcel>` (like `store`) become that parcel's `customProps`** — the same
+  mechanism `registerApplication`'s `customProps` uses for the routed version. That's why the
+  parcel-mounted counter on this page and the routed `/mfe-one` page share the same count: both
+  are handed the identical `store` instance, just via two different (but structurally identical)
+  single-spa mounting APIs.

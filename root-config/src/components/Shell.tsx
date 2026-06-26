@@ -1,9 +1,14 @@
 import { Route, Routes } from 'react-router-dom';
+import type { AppStore } from '@poc/shared-store';
 import TopBar from './TopBar';
 import Sidebar from './Sidebar';
 import Welcome from './Welcome';
 
-export default function Shell() {
+type ShellProps = {
+    store: AppStore;
+};
+
+export default function Shell({ store }: ShellProps) {
     return (
         <div className="shell">
             <TopBar />
@@ -11,7 +16,7 @@ export default function Shell() {
                 <Sidebar />
                 <main className="shell-content">
                     <Routes>
-                        <Route path="/" element={<Welcome />} />
+                        <Route path="/" element={<Welcome store={store} />} />
                     </Routes>
                     <div id="single-spa-content" />
                 </main>

@@ -68,3 +68,11 @@ body {
 .welcome {
     color: #6b7280;
 }
+
+.welcome-parcel {
+    margin-top: 1rem;
+    padding: 1rem;
+    border: 1px dashed #d1d5db;
+    border-radius: 6px;
+    width: fit-content;
+}
